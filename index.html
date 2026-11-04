@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Finanças</title>
+  <title>Finanças & Liberdade Financeira</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -54,7 +54,8 @@
               await signInAnonymously(window.auth);
             }
           } catch (err) {
-            console.warn("Auth initialization error", err);
+            console.warn("Auth initialization error, falling back to anonymous auth", err);
+            try { await signInAnonymously(window.auth); } catch (e) {}
           }
         };
 
@@ -67,7 +68,7 @@
           }
         });
       } catch (e) {
-        console.warn("Firebase config error, running offline", e);
+        console.warn("Firebase config error, running in local-only mode", e);
       }
     }
 
@@ -79,9 +80,9 @@
       onSnapshot(dataDocRef, (docSnap) => {
         if (docSnap.exists()) {
           const cloudData = docSnap.data();
-          if (cloudData.transactions) window.transactions = cloudData.transactions;
-          if (cloudData.bills) window.bills = cloudData.bills;
-          if (cloudData.goals) window.goals = cloudData.goals;
+          if (Array.isArray(cloudData.transactions)) window.transactions = cloudData.transactions;
+          if (Array.isArray(cloudData.bills)) window.bills = cloudData.bills;
+          if (Array.isArray(cloudData.goals)) window.goals = cloudData.goals;
           
           if (typeof window.renderApp === 'function') window.renderApp();
           if (typeof window.renderCharts === 'function') window.renderCharts();
@@ -97,8 +98,13 @@
     function updateSyncBadge(isSynced) {
       const badge = document.getElementById('cloudSyncStatus');
       if (badge) {
-        badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center space-x-1";
-        badge.innerHTML = `<i data-lucide="cloud-check" class="w-3 h-3 text-emerald-400"></i><span>Nuvem Sincronizada</span>`;
+        if (isSynced) {
+          badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center space-x-1";
+          badge.innerHTML = `<i data-lucide="cloud-check" class="w-3 h-3 text-emerald-400"></i><span>Nuvem Sincronizada</span>`;
+        } else {
+          badge.className = "text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center space-x-1";
+          badge.innerHTML = `<i data-lucide="hard-drive" class="w-3 h-3 text-amber-400"></i><span>Modo Local</span>`;
+        }
         if (window.lucide) window.lucide.createIcons();
       }
     }
@@ -109,7 +115,7 @@
         localStorage.setItem('fin_bills', JSON.stringify(window.bills));
         localStorage.setItem('fin_goals', JSON.stringify(window.goals));
       } catch (e) {
-        console.error("Error saving local:", e);
+        console.warn("Storage local indisponível:", e);
       }
 
       if (window.db && window.currentUser) {
@@ -125,7 +131,7 @@
           }, { merge: true });
           updateSyncBadge(true);
         } catch (err) {
-          console.error("Error writing to Firestore:", err);
+          console.error("Erro na gravação remota:", err);
           updateSyncBadge(false);
         }
       } else {
@@ -210,7 +216,7 @@
       </button>
       <button onclick="switchTab('investments')" id="tab-investments" class="tab-btn flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition whitespace-nowrap text-slate-400 hover:text-slate-200">
         <i data-lucide="piggy-bank" class="w-4 h-4"></i>
-        <span>Investimentos (50/30/20)</span>
+        <span>Investimentos & Liberdade</span>
       </button>
       <button onclick="switchTab('simulator')" id="tab-simulator" class="tab-btn flex items-center space-x-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-medium transition whitespace-nowrap text-slate-400 hover:text-slate-200">
         <i data-lucide="trending-up" class="w-4 h-4"></i>
@@ -410,93 +416,286 @@
       </div>
     </section>
 
-    <!-- ABA 4: INVESTIMENTOS -->
+    <!-- ABA 4: INVESTIMENTOS (CERBASI) -->
     <section id="content-investments" class="tab-content hidden space-y-6">
-      <div class="bg-slate-900/60 dark:bg-slate-900/60 bg-white border border-slate-800 dark:border-slate-800 border-slate-200 rounded-2xl p-6 backdrop-blur shadow-sm">
-        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div>
-            <h3 class="text-lg font-bold text-slate-100 dark:text-slate-100 text-slate-900 flex items-center space-x-2">
-              <i data-lucide="piggy-bank" class="w-5 h-5 text-emerald-400"></i>
-              <span>Calculadora da Regra Orçamentária</span>
-            </h3>
-            <p class="text-sm text-slate-400 mt-1">Defina quanto investir e gastar de forma simples e automatizada.</p>
+
+      <!-- SUB-NAVEGAÇÃO DE INVESTIMENTOS -->
+      <div class="flex space-x-2 border-b border-slate-800 dark:border-slate-800 border-slate-200 pb-2 overflow-x-auto scrollbar-none">
+        <button onclick="switchInvestSubTab('cerbasi-diag')" id="invest-sub-cerbasi-diag" class="invest-subtab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+          <i data-lucide="shield-alert" class="w-3.5 h-3.5 inline mr-1"></i>Diagnóstico Patrimonial (Cerbasi)
+        </button>
+        <button onclick="switchInvestSubTab('budget-rule')" id="invest-sub-budget-rule" class="invest-subtab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200">
+          <i data-lucide="pie-chart" class="w-3.5 h-3.5 inline mr-1"></i>Regra Orçamentária & Alocação
+        </button>
+        <button onclick="switchInvestSubTab('life-stages')" id="invest-sub-life-stages" class="invest-subtab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200">
+          <i data-lucide="footprints" class="w-3.5 h-3.5 inline mr-1"></i>Jornada em 3 Etapas
+        </button>
+        <button onclick="switchInvestSubTab('strategies')" id="invest-sub-strategies" class="invest-subtab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200">
+          <i data-lucide="building-2" class="w-3.5 h-3.5 inline mr-1"></i>Estratégias Práticas
+        </button>
+      </div>
+
+      <!-- SUBTAB 1: DIAGNÓSTICO PATRIMONIAL DO CERBASI (PMS, PMR, PI, PNIF) -->
+      <div id="invest-content-cerbasi-diag" class="invest-subcontent space-y-6">
+        <div class="bg-slate-900/60 dark:bg-slate-900/60 bg-white border border-slate-800 dark:border-slate-800 border-slate-200 rounded-2xl p-6 backdrop-blur shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-lg font-bold text-slate-100 dark:text-slate-100 text-slate-900 flex items-center space-x-2">
+                <i data-lucide="activity" class="w-5 h-5 text-emerald-400"></i>
+                <span>Diagnóstico de Equilíbrio Patrimonial (Metodologia Cerbasi)</span>
+              </h3>
+              <p class="text-xs text-slate-400 mt-1">Calcule seus limites de sobrevivência, segurança, meta ideal e independência total baseados em <i>"Como Organizar sua Vida Financeira"</i>.</p>
+            </div>
+            <span class="text-xs bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-3 py-1 rounded-full font-semibold">Análise Automática</span>
           </div>
 
-          <div class="flex items-center space-x-2 bg-slate-800 dark:bg-slate-800 bg-slate-200 p-1 rounded-xl border border-slate-700 dark:border-slate-700 border-slate-300">
-            <button onclick="setPreset('50/30/20')" id="preset-50/30/20" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 text-slate-950">50/30/20</button>
-            <button onclick="setPreset('50/10/40')" id="preset-50/10/40" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400">50/10/40</button>
-            <button onclick="setPreset('60/20/20')" id="preset-60/20/20" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400">60/20/20</button>
-            <button onclick="setPreset('70/20/10')" id="preset-70/20/10" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400">70/20/10</button>
+          <!-- INPUTS DE DIAGNÓSTICO -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6 bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 p-4 rounded-xl border border-slate-700/50 border-slate-200">
+            <div>
+              <label class="text-xs font-semibold text-slate-300 dark:text-slate-300 text-slate-700 block mb-1">Idade Atual</label>
+              <input type="number" id="diagAge" value="35" min="18" max="100" oninput="calculateCerbasiDiagnostics()" class="w-full bg-slate-900 dark:bg-slate-900 bg-white border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-1.5 rounded-xl text-sm font-bold focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="text-xs font-semibold text-slate-300 dark:text-slate-300 text-slate-700 block mb-1">Investimentos Atuais (R$)</label>
+              <input type="number" id="diagCurrentAssets" value="100000" min="0" oninput="calculateCerbasiDiagnostics()" class="w-full bg-slate-900 dark:bg-slate-900 bg-white border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-1.5 rounded-xl text-sm font-bold focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="text-xs font-semibold text-slate-300 dark:text-slate-300 text-slate-700 block mb-1">Taxa Líquida Anual (%)</label>
+              <input type="number" id="diagNetRate" value="6.0" step="0.5" min="0.5" max="30" oninput="calculateCerbasiDiagnostics()" class="w-full bg-slate-900 dark:bg-slate-900 bg-white border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-1.5 rounded-xl text-sm font-bold focus:outline-none focus:border-emerald-500">
+            </div>
+            <div>
+              <label class="text-xs font-semibold text-slate-300 dark:text-slate-300 text-slate-700 block mb-1">Empregabilidade</label>
+              <select id="diagEmployability" onchange="calculateCerbasiDiagnostics()" class="w-full bg-slate-900 dark:bg-slate-900 bg-white border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-1.5 rounded-xl text-sm font-bold focus:outline-none focus:border-emerald-500">
+                <option value="high">Alta (CLT / Estável)</option>
+                <option value="low">Baixa (Autônomo / PJ)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- OS 4 INDICADORES PATRIMONIAIS DO CERBASI -->
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            
+            <!-- 1. PMS -->
+            <div class="bg-slate-800/60 dark:bg-slate-800/60 bg-slate-100 border border-slate-700/70 dark:border-slate-700/70 border-slate-200 rounded-2xl p-4 flex flex-col justify-between">
+              <div>
+                <div class="flex justify-between items-start mb-2">
+                  <span class="text-[11px] font-bold text-amber-400 uppercase tracking-wider">1. PMS (Sobrevivência)</span>
+                  <i data-lucide="shield-alert" class="w-4 h-4 text-amber-400"></i>
+                </div>
+                <p id="pms-val" class="text-xl font-bold text-slate-100 dark:text-slate-100 text-slate-900">R$ 0,00</p>
+                <p class="text-[11px] text-slate-400 mt-1"><b>6x os Gastos Mensais.</b> Reserva mínima de emergência em liquidez imediata.</p>
+              </div>
+              <div id="pms-status" class="mt-3 text-[10px] font-bold px-2 py-1 rounded-lg text-center bg-amber-500/20 text-amber-400 border border-amber-500/30">Analisando...</div>
+            </div>
+
+            <!-- 2. PMR -->
+            <div class="bg-slate-800/60 dark:bg-slate-800/60 bg-slate-100 border border-slate-700/70 dark:border-slate-700/70 border-slate-200 rounded-2xl p-4 flex flex-col justify-between">
+              <div>
+                <div class="flex justify-between items-start mb-2">
+                  <span class="text-[11px] font-bold text-blue-400 uppercase tracking-wider">2. PMR (Segurança)</span>
+                  <i data-lucide="shield-check" class="w-4 h-4 text-blue-400"></i>
+                </div>
+                <p id="pmr-val" class="text-xl font-bold text-slate-100 dark:text-slate-100 text-slate-900">R$ 0,00</p>
+                <p class="text-[11px] text-slate-400 mt-1"><b>12x ou 20x os Gastos.</b> Permite ousar na carreira e transições com lastro seguro.</p>
+              </div>
+              <div id="pmr-status" class="mt-3 text-[10px] font-bold px-2 py-1 rounded-lg text-center bg-blue-500/20 text-blue-400 border border-blue-500/30">Analisando...</div>
+            </div>
+
+            <!-- 3. PI -->
+            <div class="bg-slate-800/60 dark:bg-slate-800/60 bg-slate-100 border border-slate-700/70 dark:border-slate-700/70 border-slate-200 rounded-2xl p-4 flex flex-col justify-between">
+              <div>
+                <div class="flex justify-between items-start mb-2">
+                  <span class="text-[11px] font-bold text-indigo-400 uppercase tracking-wider">3. PI (Ideal para Idade)</span>
+                  <i data-lucide="target" class="w-4 h-4 text-indigo-400"></i>
+                </div>
+                <p id="pi-val" class="text-xl font-bold text-slate-100 dark:text-slate-100 text-slate-900">R$ 0,00</p>
+                <p class="text-[11px] text-slate-400 mt-1"><b>10% x Gasto Anual x Idade.</b> Ritmo ideal para manter padrão até os 65 anos.</p>
+              </div>
+              <div id="pi-status" class="mt-3 text-[10px] font-bold px-2 py-1 rounded-lg text-center bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">Analisando...</div>
+            </div>
+
+            <!-- 4. PNIF -->
+            <div class="bg-emerald-950/40 dark:bg-emerald-950/40 bg-emerald-50 border border-emerald-500/30 rounded-2xl p-4 flex flex-col justify-between">
+              <div>
+                <div class="flex justify-between items-start mb-2">
+                  <span class="text-[11px] font-bold text-emerald-400 uppercase tracking-wider">4. PNIF (Independência)</span>
+                  <i data-lucide="sparkles" class="w-4 h-4 text-emerald-400"></i>
+                </div>
+                <p id="pnif-val" class="text-xl font-bold text-emerald-400">R$ 0,00</p>
+                <p class="text-[11px] text-slate-400 mt-1"><b>Gasto Anual / Taxa Líquida.</b> Viver apenas dos rendimentos reais perpétuos.</p>
+              </div>
+              <div id="pnif-status" class="mt-3 text-[10px] font-bold px-2 py-1 rounded-lg text-center bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Analisando...</div>
+            </div>
+
           </div>
         </div>
+      </div>
 
-        <div class="mb-6 bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 p-4 rounded-xl border border-slate-700/50 dark:border-slate-700/50 border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div>
-            <label class="text-xs font-semibold text-slate-300 dark:text-slate-300 text-slate-700 uppercase tracking-wider block mb-1">Receita Base para Cálculo</label>
-            <p class="text-xs text-slate-400">Insira um valor para simulação alternativa ou use a receita atual</p>
-          </div>
-          <div class="relative w-full sm:w-64">
-            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold text-sm">R$</span>
-            <input type="number" id="investIncomeInput" oninput="renderApp()" placeholder="0.00" class="w-full bg-slate-900 dark:bg-slate-900 bg-white border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 font-bold pl-9 pr-4 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div class="bg-slate-800/60 dark:bg-slate-800/60 bg-slate-100 border border-slate-700/70 dark:border-slate-700/70 border-slate-200 rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-2">
-              <span id="inv-needs-label" class="text-xs font-bold text-blue-400 uppercase tracking-wider">Necessidades / Fixos (50%)</span>
-              <i data-lucide="shield-check" class="w-5 h-5 text-blue-400"></i>
-            </div>
-            <p id="inv-needs-val" class="text-2xl font-bold text-slate-100 dark:text-slate-100 text-slate-900 mb-1">R$ 0,00</p>
-            <p class="text-xs text-slate-400">Moradia, contas, alimentação e saúde.</p>
-          </div>
-
-          <div class="bg-slate-800/60 dark:bg-slate-800/60 bg-slate-100 border border-slate-700/70 dark:border-slate-700/70 border-slate-200 rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-2">
-              <span id="inv-wants-label" class="text-xs font-bold text-purple-400 uppercase tracking-wider">Gastos Livres (30%)</span>
-              <i data-lucide="sparkles" class="w-5 h-5 text-purple-400"></i>
-            </div>
-            <p id="inv-wants-val" class="text-2xl font-bold text-slate-100 dark:text-slate-100 text-slate-900 mb-1">R$ 0,00</p>
-            <p class="text-xs text-slate-400">Lazer, restaurantes e viagens.</p>
-          </div>
-
-          <div class="bg-emerald-950/40 dark:bg-emerald-950/40 bg-emerald-50 border border-emerald-500/30 rounded-2xl p-5">
-            <div class="flex items-center justify-between mb-2">
-              <span id="inv-savings-label" class="text-xs font-bold text-emerald-400 uppercase tracking-wider">Investimentos (20%)</span>
-              <i data-lucide="piggy-bank" class="w-5 h-5 text-emerald-400"></i>
-            </div>
-            <p id="inv-savings-val" class="text-2xl font-bold text-emerald-400 mb-1">R$ 0,00</p>
-            <p class="text-xs text-slate-400">Reserva, ações, FIIs e metas futuras.</p>
-          </div>
-        </div>
-
-        <div class="mt-8 pt-6 border-t border-slate-800 dark:border-slate-800 border-slate-200">
-          <h4 class="text-sm font-bold text-slate-200 dark:text-slate-200 text-slate-800 mb-4 flex items-center space-x-2">
-            <i data-lucide="sliders" class="w-4 h-4 text-emerald-400"></i>
-            <span>Sugestão de Carteira do Investimento Mensal</span>
-          </h4>
-
-          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div class="bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 border border-slate-700/50 dark:border-slate-700/50 border-slate-200 p-4 rounded-xl">
-              <p class="text-xs text-slate-400 font-semibold">Renda Fixa / Liquidez (50%)</p>
-              <p id="alloc-rf" class="text-base font-bold text-slate-100 dark:text-slate-100 text-slate-900 mt-1">R$ 0,00</p>
-              <p class="text-xs text-slate-500 mt-1">CDB 100%+ CDI, Tesouro Selic</p>
+      <!-- SUBTAB 2: REGRA ORÇAMENTÁRIA & ALOCAÇÃO -->
+      <div id="invest-content-budget-rule" class="invest-subcontent hidden space-y-6">
+        <div class="bg-slate-900/60 dark:bg-slate-900/60 bg-white border border-slate-800 dark:border-slate-800 border-slate-200 rounded-2xl p-6 backdrop-blur shadow-sm">
+          <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div>
+              <h3 class="text-lg font-bold text-slate-100 dark:text-slate-100 text-slate-900 flex items-center space-x-2">
+                <i data-lucide="piggy-bank" class="w-5 h-5 text-emerald-400"></i>
+                <span>Calculadora da Regra Orçamentária</span>
+              </h3>
+              <p class="text-sm text-slate-400 mt-1">Defina quanto investir e gastar de forma simples e automatizada.</p>
             </div>
 
-            <div class="bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 border border-slate-700/50 dark:border-slate-700/50 border-slate-200 p-4 rounded-xl">
-              <p class="text-xs text-slate-400 font-semibold">Fundos Imobiliários (30%)</p>
-              <p id="alloc-fii" class="text-base font-bold text-slate-100 dark:text-slate-100 text-slate-900 mt-1">R$ 0,00</p>
-              <p class="text-xs text-slate-500 mt-1">FIIs de Papel e Tijolo (Rendimento)</p>
+            <div class="flex items-center space-x-2 bg-slate-800 dark:bg-slate-800 bg-slate-200 p-1 rounded-xl border border-slate-700 dark:border-slate-700 border-slate-300">
+              <button onclick="setPreset('50/30/20')" id="preset-50/30/20" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 text-slate-950">50/30/20</button>
+              <button onclick="setPreset('50/10/40')" id="preset-50/10/40" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400">50/10/40</button>
+              <button onclick="setPreset('60/20/20')" id="preset-60/20/20" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400">60/20/20</button>
+              <button onclick="setPreset('70/20/10')" id="preset-70/20/10" class="preset-btn px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-400">70/20/10</button>
+            </div>
+          </div>
+
+          <div class="mb-6 bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 p-4 rounded-xl border border-slate-700/50 dark:border-slate-700/50 border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <label class="text-xs font-semibold text-slate-300 dark:text-slate-300 text-slate-700 uppercase tracking-wider block mb-1">Receita Base para Cálculo</label>
+              <p class="text-xs text-slate-400">Insira um valor para simulação alternativa ou use a receita atual</p>
+            </div>
+            <div class="relative w-full sm:w-64">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 font-semibold text-sm">R$</span>
+              <input type="number" id="investIncomeInput" oninput="renderApp()" placeholder="0.00" class="w-full bg-slate-900 dark:bg-slate-900 bg-white border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 font-bold pl-9 pr-4 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-slate-800/60 dark:bg-slate-800/60 bg-slate-100 border border-slate-700/70 dark:border-slate-700/70 border-slate-200 rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-2">
+                <span id="inv-needs-label" class="text-xs font-bold text-blue-400 uppercase tracking-wider">Necessidades / Fixos (50%)</span>
+                <i data-lucide="shield-check" class="w-5 h-5 text-blue-400"></i>
+              </div>
+              <p id="inv-needs-val" class="text-2xl font-bold text-slate-100 dark:text-slate-100 text-slate-900 mb-1">R$ 0,00</p>
+              <p class="text-xs text-slate-400">Moradia, contas, alimentação e saúde.</p>
             </div>
 
-            <div class="bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 border border-slate-700/50 dark:border-slate-700/50 border-slate-200 p-4 rounded-xl">
-              <p class="text-xs text-slate-400 font-semibold">Ações / Internacional (20%)</p>
-              <p id="alloc-stocks" class="text-base font-bold text-slate-100 dark:text-slate-100 text-slate-900 mt-1">R$ 0,00</p>
-              <p class="text-xs text-slate-500 mt-1">ETFs Globais, Dólar e Ações</p>
+            <div class="bg-slate-800/60 dark:bg-slate-800/60 bg-slate-100 border border-slate-700/70 dark:border-slate-700/70 border-slate-200 rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-2">
+                <span id="inv-wants-label" class="text-xs font-bold text-purple-400 uppercase tracking-wider">Gastos Livres (30%)</span>
+                <i data-lucide="sparkles" class="w-5 h-5 text-purple-400"></i>
+              </div>
+              <p id="inv-wants-val" class="text-2xl font-bold text-slate-100 dark:text-slate-100 text-slate-900 mb-1">R$ 0,00</p>
+              <p class="text-xs text-slate-400">Lazer, restaurantes e viagens.</p>
+            </div>
+
+            <div class="bg-emerald-950/40 dark:bg-emerald-950/40 bg-emerald-50 border border-emerald-500/30 rounded-2xl p-5">
+              <div class="flex items-center justify-between mb-2">
+                <span id="inv-savings-label" class="text-xs font-bold text-emerald-400 uppercase tracking-wider">Investimentos (20%)</span>
+                <i data-lucide="piggy-bank" class="w-5 h-5 text-emerald-400"></i>
+              </div>
+              <p id="inv-savings-val" class="text-2xl font-bold text-emerald-400 mb-1">R$ 0,00</p>
+              <p class="text-xs text-slate-400">Reserva, ações, FIIs e metas futuras.</p>
+            </div>
+          </div>
+
+          <div class="mt-8 pt-6 border-t border-slate-800 dark:border-slate-800 border-slate-200">
+            <h4 class="text-sm font-bold text-slate-200 dark:text-slate-200 text-slate-800 mb-4 flex items-center space-x-2">
+              <i data-lucide="sliders" class="w-4 h-4 text-emerald-400"></i>
+              <span>Sugestão de Carteira do Investimento Mensal</span>
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div class="bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 border border-slate-700/50 dark:border-slate-700/50 border-slate-200 p-4 rounded-xl">
+                <p class="text-xs text-slate-400 font-semibold">Renda Fixa / Liquidez (50%)</p>
+                <p id="alloc-rf" class="text-base font-bold text-slate-100 dark:text-slate-100 text-slate-900 mt-1">R$ 0,00</p>
+                <p class="text-xs text-slate-500 mt-1">CDB 100%+ CDI, Tesouro Selic</p>
+              </div>
+
+              <div class="bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 border border-slate-700/50 dark:border-slate-700/50 border-slate-200 p-4 rounded-xl">
+                <p class="text-xs text-slate-400 font-semibold">Fundos Imobiliários (30%)</p>
+                <p id="alloc-fii" class="text-base font-bold text-slate-100 dark:text-slate-100 text-slate-900 mt-1">R$ 0,00</p>
+                <p class="text-xs text-slate-500 mt-1">FIIs de Papel e Tijolo (Rendimento)</p>
+              </div>
+
+              <div class="bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 border border-slate-700/50 dark:border-slate-700/50 border-slate-200 p-4 rounded-xl">
+                <p class="text-xs text-slate-400 font-semibold">Ações / Internacional (20%)</p>
+                <p id="alloc-stocks" class="text-base font-bold text-slate-100 dark:text-slate-100 text-slate-900 mt-1">R$ 0,00</p>
+                <p class="text-xs text-slate-500 mt-1">ETFs Globais, Dólar e Ações</p>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- SUBTAB 3: JORNADA EM 3 ETAPAS DO CERBASI -->
+      <div id="invest-content-life-stages" class="invest-subcontent hidden space-y-6">
+        <div class="bg-slate-900/60 dark:bg-slate-900/60 bg-white border border-slate-800 dark:border-slate-800 border-slate-200 rounded-2xl p-6 backdrop-blur shadow-sm">
+          <h3 class="text-lg font-bold text-slate-100 dark:text-slate-100 text-slate-900 mb-2 flex items-center space-x-2">
+            <i data-lucide="footprints" class="w-5 h-5 text-emerald-400"></i>
+            <span>A Jornada em 3 Etapas para a Construção da Riqueza</span>
+          </h3>
+          <p class="text-sm text-slate-400 mb-6">Em <i>"Adeus, Aposentadoria"</i>, Cerbasi demonstra que parar de trabalhar aos 65 anos é ultrapassado. O objetivo é a transição contínua do trabalho assalariado para o capital produtivo.</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="bg-slate-800/50 dark:bg-slate-800/50 bg-slate-100 border border-slate-700/60 border-slate-200 p-5 rounded-xl">
+              <div class="flex items-center space-x-2 mb-3">
+                <span class="w-7 h-7 bg-blue-500/20 text-blue-400 font-bold rounded-lg flex items-center justify-center text-xs">1</span>
+                <h4 class="font-bold text-slate-100 dark:text-slate-100 text-slate-900 text-sm">Educação para o Trabalho</h4>
+              </div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Foco em criar valor para terceiros, aprender processos, acumular bagagem e acelerar o crescimento salarial. O principal fator é poupar parte de todos os aumentos de renda obtidos.
+              </p>
+            </div>
+
+            <div class="bg-slate-800/50 dark:bg-slate-800/50 bg-slate-100 border border-slate-700/60 border-slate-200 p-5 rounded-xl">
+              <div class="flex items-center space-x-2 mb-3">
+                <span class="w-7 h-7 bg-amber-500/20 text-amber-400 font-bold rounded-lg flex items-center justify-center text-xs">2</span>
+                <h4 class="font-bold text-slate-100 dark:text-slate-100 text-slate-900 text-sm">Educação para Empreender</h4>
+              </div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Transição para colocar o capital acumulado para trabalhar. Pode incluir negócios próprios, carteira de imóveis ativa, franquias, leilões ou parcerias como sócio capitalista.
+              </p>
+            </div>
+
+            <div class="bg-emerald-950/40 dark:bg-emerald-950/40 bg-emerald-50 border border-emerald-500/30 p-5 rounded-xl">
+              <div class="flex items-center space-x-2 mb-3">
+                <span class="w-7 h-7 bg-emerald-500/20 text-emerald-400 font-bold rounded-lg flex items-center justify-center text-xs">3</span>
+                <h4 class="font-bold text-emerald-400 text-sm">Educação para Investir</h4>
+              </div>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Fase de governança, conselho e legado. Os negócios funcionam de maneira automatizada e auditada, gerando dividendos perpétuos que cobrem a qualidade de vida.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- SUBTAB 4: ESTRATÉGIAS PRÁTICAS (IMÓVEIS, CONCURSO, HERANÇA, ETC) -->
+      <div id="invest-content-strategies" class="invest-subcontent hidden space-y-6">
+        <div class="bg-slate-900/60 dark:bg-slate-900/60 bg-white border border-slate-800 dark:border-slate-800 border-slate-200 rounded-2xl p-6 backdrop-blur shadow-sm">
+          <h3 class="text-lg font-bold text-slate-100 dark:text-slate-100 text-slate-900 mb-2 flex items-center space-x-2">
+            <i data-lucide="building-2" class="w-5 h-5 text-emerald-400"></i>
+            <span>Estratégias Práticas de Investimento Ativo</span>
+          </h3>
+          <p class="text-sm text-slate-400 mb-6">Cases de sucesso descritos nos livros de Cerbasi para acelerar o patrimônio sem dependência governamental.</p>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 border border-slate-700/50 border-slate-200 p-5 rounded-xl">
+              <h4 class="font-bold text-sm text-emerald-400 flex items-center space-x-2 mb-2">
+                <i data-lucide="home" class="w-4 h-4"></i>
+                <span>Atitude Empreendedora em Imóveis</span>
+              </h4>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Em vez de apenas comprar imóveis prontos para alugar (baixo retorno real), a estratégia avançada sugere adquirir terrenos e construir casas em grupo para revenda com lucro de 40% a 70%, gerando alavancagem rápida do capital.
+              </p>
+            </div>
+
+            <div class="bg-slate-800/40 dark:bg-slate-800/40 bg-slate-100 border border-slate-700/50 border-slate-200 p-5 rounded-xl">
+              <h4 class="font-bold text-sm text-emerald-400 flex items-center space-x-2 mb-2">
+                <i data-lucide="shield-alert" class="w-4 h-4"></i>
+                <span>Planejamento Sucessório & Tributário</span>
+              </h4>
+              <p class="text-xs text-slate-400 leading-relaxed">
+                Utilize ferramentas como VGBL (com tributação progressiva quando a renda for isenta) para evitar custos de inventário (ITCMD) e garantir liquidez imediata para herdeiros em caso de imprevistos.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
     </section>
 
     <!-- ABA 5: SIMULADOR DE JUROS COMPOSTOS -->
@@ -511,19 +710,19 @@
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Aporte Inicial (R$)</label>
-            <input type="number" id="simInitial" value="10000" oninput="renderSimulator()" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+            <input type="number" id="simInitial" value="10000" min="0" oninput="renderSimulator()" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
           </div>
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Aporte Mensal (R$)</label>
-            <input type="number" id="simMonthly" value="2000" oninput="renderSimulator()" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+            <input type="number" id="simMonthly" value="2000" min="0" oninput="renderSimulator()" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
           </div>
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Taxa de Juros Anual (%)</label>
-            <input type="number" id="simRate" value="10" step="0.5" oninput="renderSimulator()" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+            <input type="number" id="simRate" value="10" step="0.5" min="0" oninput="renderSimulator()" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
           </div>
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Prazo (Anos)</label>
-            <input type="number" id="simYears" value="10" min="1" max="30" oninput="renderSimulator()" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+            <input type="number" id="simYears" value="10" min="1" max="50" oninput="renderSimulator()" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-800 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
           </div>
         </div>
 
@@ -607,7 +806,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Valor (R$)</label>
-            <input type="number" id="formAmount" step="0.01" required placeholder="0.00" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+            <input type="number" id="formAmount" step="0.01" min="0.01" required placeholder="0.00" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
           </div>
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Tipo</label>
@@ -637,6 +836,7 @@
               <option value="Lazer">Lazer</option>
               <option value="Saúde">Saúde</option>
               <option value="Salário">Salário</option>
+              <option value="Outros">Outros</option>
             </select>
           </div>
         </div>
@@ -672,11 +872,11 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Valor Alvo (R$)</label>
-            <input type="number" id="goalTargetInput" step="0.01" required placeholder="15000.00" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+            <input type="number" id="goalTargetInput" step="0.01" min="1" required placeholder="15000.00" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
           </div>
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Valor Inicial (R$)</label>
-            <input type="number" id="goalCurrentInput" step="0.01" placeholder="0.00" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+            <input type="number" id="goalCurrentInput" step="0.01" min="0" placeholder="0.00" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
           </div>
         </div>
 
@@ -706,7 +906,7 @@
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Valor (R$)</label>
-            <input type="number" id="billAmountInput" step="0.01" required placeholder="150.00" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
+            <input type="number" id="billAmountInput" step="0.01" min="0.01" required placeholder="150.00" class="w-full bg-slate-800 dark:bg-slate-800 bg-slate-100 border border-slate-700 dark:border-slate-700 border-slate-300 text-slate-100 dark:text-slate-100 text-slate-900 px-3 py-2 rounded-xl text-sm focus:outline-none focus:border-emerald-500">
           </div>
           <div>
             <label class="text-xs text-slate-400 font-semibold block mb-1">Dia de Vencimento</label>
@@ -764,10 +964,19 @@
       { id: 'g3', title: 'Entrada Veículo Novo', target: 30000, current: 12400 }
     ];
 
-    // STATE
-    window.transactions = JSON.parse(localStorage.getItem('fin_transactions')) || initialTransactions;
-    window.bills = JSON.parse(localStorage.getItem('fin_bills')) || initialBills;
-    window.goals = JSON.parse(localStorage.getItem('fin_goals')) || initialGoals;
+    // STATE SAFELY INITIALIZED
+    function getStoredItem(key, fallback) {
+      try {
+        const item = localStorage.getItem(key);
+        return item ? JSON.parse(item) : fallback;
+      } catch (e) {
+        return fallback;
+      }
+    }
+
+    window.transactions = getStoredItem('fin_transactions', initialTransactions);
+    window.bills = getStoredItem('fin_bills', initialBills);
+    window.goals = getStoredItem('fin_goals', initialGoals);
     
     let selectedMonth = '2026-10';
     let personFilter = 'all';
@@ -780,14 +989,6 @@
     function saveData() {
       if (typeof window.saveDataToCloudAndLocal === 'function') {
         window.saveDataToCloudAndLocal();
-      } else {
-        try {
-          localStorage.setItem('fin_transactions', JSON.stringify(window.transactions));
-          localStorage.setItem('fin_bills', JSON.stringify(window.bills));
-          localStorage.setItem('fin_goals', JSON.stringify(window.goals));
-        } catch (err) {
-          console.error("Erro ao salvar dados localmente", err);
-        }
       }
     }
 
@@ -838,6 +1039,24 @@
 
       if (tabId === 'dashboard') renderCharts();
       if (tabId === 'simulator') renderSimulator();
+      if (tabId === 'investments') calculateCerbasiDiagnostics();
+    }
+
+    function switchInvestSubTab(subTabId) {
+      document.querySelectorAll('.invest-subcontent').forEach(el => el.classList.add('hidden'));
+      document.querySelectorAll('.invest-subtab-btn').forEach(btn => {
+        btn.className = "invest-subtab-btn px-3 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-slate-200";
+      });
+
+      const activeContent = document.getElementById(`invest-content-${subTabId}`);
+      if (activeContent) activeContent.classList.remove('hidden');
+
+      const activeBtn = document.getElementById(`invest-sub-${subTabId}`);
+      if (activeBtn) {
+        activeBtn.className = "invest-subtab-btn px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+      }
+
+      if (subTabId === 'cerbasi-diag') calculateCerbasiDiagnostics();
     }
 
     function setPersonFilter(person) {
@@ -857,6 +1076,56 @@
 
     function formatBRL(val) {
       return (val || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    }
+
+    // CERBASI PATRIMONIAL DIAGNOSTICS (PMS, PMR, PI, PNIF)
+    function calculateCerbasiDiagnostics() {
+      const monthTx = window.transactions.filter(t => selectedMonth === 'all' || t.month === selectedMonth);
+      const monthlyExpense = monthTx.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0) || 5000;
+      const annualExpense = monthlyExpense * 12;
+
+      const age = parseInt(document.getElementById('diagAge')?.value) || 35;
+      const currentAssets = parseFloat(document.getElementById('diagCurrentAssets')?.value) || 100000;
+      const netRateInput = parseFloat(document.getElementById('diagNetRate')?.value);
+      const netRate = (!isNaN(netRateInput) && netRateInput > 0 ? netRateInput : 6.0) / 100;
+      const empType = document.getElementById('diagEmployability')?.value || 'high';
+
+      // 1. PMS = 6x Monthly Expense
+      const pms = monthlyExpense * 6;
+
+      // 2. PMR = 12x (High Employability) or 20x (Low Employability)
+      const pmrMultiplier = empType === 'high' ? 12 : 20;
+      const pmr = monthlyExpense * pmrMultiplier;
+
+      // 3. PI = 10% x Annual Expense x Age
+      const pi = 0.10 * annualExpense * age;
+
+      // 4. PNIF = Annual Expense / Net Annual Rate
+      const pnif = annualExpense / netRate;
+
+      // Render values safely
+      if (document.getElementById('pms-val')) document.getElementById('pms-val').innerText = formatBRL(pms);
+      if (document.getElementById('pmr-val')) document.getElementById('pmr-val').innerText = formatBRL(pmr);
+      if (document.getElementById('pi-val')) document.getElementById('pi-val').innerText = formatBRL(pi);
+      if (document.getElementById('pnif-val')) document.getElementById('pnif-val').innerText = formatBRL(pnif);
+
+      // Status Badges based on Current Assets
+      setDiagBadge('pms-status', currentAssets >= pms, 'Atingido (Seguro)', 'Necessita Aporte');
+      setDiagBadge('pmr-status', currentAssets >= pmr, 'Atingido (Estável)', 'Em Construção');
+      setDiagBadge('pi-status', currentAssets >= pi, 'Acima do Ideal', 'Abaixo do Ideal');
+      setDiagBadge('pnif-status', currentAssets >= pnif, 'Independência Total', 'Acumulando Capital');
+    }
+
+    function setDiagBadge(elementId, condition, passText, failText) {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      if (condition) {
+        el.className = "mt-3 text-[10px] font-bold px-2 py-1 rounded-lg text-center bg-emerald-500/20 text-emerald-400 border border-emerald-500/30";
+        el.innerText = passText;
+      } else {
+        el.className = "mt-3 text-[10px] font-bold px-2 py-1 rounded-lg text-center bg-rose-500/20 text-rose-400 border border-rose-500/30";
+        el.innerText = failText;
+      }
     }
 
     function renderApp() {
@@ -1018,6 +1287,7 @@
         }).join('');
       }
 
+      calculateCerbasiDiagnostics();
       if (window.lucide) window.lucide.createIcons();
     }
 
@@ -1179,15 +1449,14 @@
       reader.onload = function(e) {
         try {
           const parsed = JSON.parse(e.target.result);
-          if (parsed.transactions) window.transactions = parsed.transactions;
-          if (parsed.bills) window.bills = parsed.bills;
-          if (parsed.goals) window.goals = parsed.goals;
+          if (Array.isArray(parsed.transactions)) window.transactions = parsed.transactions;
+          if (Array.isArray(parsed.bills)) window.bills = parsed.bills;
+          if (Array.isArray(parsed.goals)) window.goals = parsed.goals;
           saveData();
           renderApp();
           renderCharts();
-          alert('Dados importados com sucesso!');
         } catch (err) {
-          alert('Arquivo JSON inválido.');
+          console.error("JSON parsing error", err);
         }
       };
       if (event.target.files && event.target.files[0]) {
